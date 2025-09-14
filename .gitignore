@@ -1,0 +1,56 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.log
+
+# --- Virtual environments ---
+.venv/
+venv/
+ENV/
+env/
+*.env
+*.venv
+
+# --- OS files ---
+.DS_Store
+Thumbs.db
+
+# --- IDE/editor configs ---
+.vscode/
+.idea/
+*.swp
+
+# --- Jupyter notebooks checkpoints ---
+.ipynb_checkpoints/
+
+# --- Streamlit cache ---
+.streamlit/
+**/.streamlit/
+
+# --- FastAPI / Uvicorn logs ---
+*.log
+logs/
+*.db
+
+# --- CSVs / Data files (if large) ---
+examples/*.csv
+*.sqlite3
+*.db
+
+# --- Test / coverage files ---
+.pytest_cache/
+.coverage
+htmlcov/
+.cache/
+
+# --- Misc ---
+*.bak

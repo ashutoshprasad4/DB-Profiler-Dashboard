@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+pandas
+numpy
+scikit-learn
+psycopg2-binary
+sqlparse
+python-dotenv
+rich
