@@ -1,112 +1,92 @@
 # app/api.py
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import pandas as pd
-from .collector import collect_from_csv
+from typing import List, Optional
+from dotenv import load_dotenv
+
+load_dotenv() # Loads variables from .env file
+
+# Import your project modules
 from .features import extract_features
 from .analyzer import Analyzer
-from .recommender import recommend
 from .generator import generate_csv
+from .ai_recommender import get_llm_recommendation_for_query
 
 app = FastAPI()
-
 analyzer = Analyzer()
 
+# --- Pydantic Models for structured requests ---
 class AnalyzeRequest(BaseModel):
     csv_path: str
+
+class LLMRequest(BaseModel):
+    query: str
+    execution_time: float
+    rows_examined: int
+    reasons: List[str]
+
+# --- API Endpoints ---
+@app.post("/analyze")
+def analyze(req: AnalyzeRequest):
+    """
+    Reads a CSV, runs heuristic analysis, and returns the enriched data without modifying the file.
+    """
+    try:
+        df = pd.read_csv(req.csv_path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"CSV file not found at {req.csv_path}")
+
+    try:
+        # 1. Feature Engineering
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df = extract_features(df)
+
+        # 2. Standardize column names
+        if "exec_time_ms" in df.columns and "execution_time" not in df.columns:
+            df = df.rename(columns={"exec_time_ms": "execution_time"})
+        
+        required_columns = ["execution_time", "rows_examined", "query"]
+        for col in required_columns:
+            if col not in df.columns:
+                raise ValueError(f"Input CSV is missing the required column: '{col}'")
+
+        # 3. Heuristic Analysis
+        analyzer.train_anomaly(df)
+        df_with_features = analyzer.detect_anomalies(df)
+        df_with_features = analyzer.rule_checks(df_with_features)
+        
+        if df_with_features is None or not isinstance(df_with_features, pd.DataFrame):
+            raise ValueError("Analysis resulted in an invalid DataFrame.")
+
+        # --- FIX: Convert Timestamp objects to JSON-compatible strings ---
+        # The .astype(str) method is the correct way to serialize a datetime column.
+        df_with_features['timestamp'] = df_with_features['timestamp'].astype(str)
+
+        # Convert DataFrame to a list of dicts and let JSONResponse handle encoding
+        json_content = df_with_features.to_dict(orient='records')
+        return JSONResponse(content=json_content)
+
+    except Exception as e:
+        # If any part of the analysis fails, return a specific HTTP 500 error.
+        raise HTTPException(status_code=500, detail=f"An error occurred during analysis: {e}")
+
+
+@app.post("/get-llm-recommendation")
+def get_llm_recommendation(req: LLMRequest):
+    """
+    Takes data for a single query and gets a detailed recommendation from an LLM.
+    """
+    recommendation = get_llm_recommendation_for_query(req.dict())
+    return recommendation
 
 @app.post("/generate-sample")
 def gen_sample():
     generate_csv()
     return {"detail": "generated examples/sample_logs.csv"}
 
-@app.post("/analyze")
-def analyze(csv_path: str = "examples/sample_logs.csv"):
-    df = pd.read_csv(csv_path)
-
-    # ✅ Normalize column names for consistency
-    if "exec_time_ms" in df.columns and "execution_time" not in df.columns:
-        df = df.rename(columns={"exec_time_ms": "execution_time"})
-
-    has_exec_time = "execution_time" in df.columns
-    has_query = "query" in df.columns
-
-    # Pick correct time column
-    time_col = "exec_time_ms" if "exec_time_ms" in df.columns else "execution_time"
-
-    def make_recommendation(row):
-        if row[time_col] > 100:
-            return "Query is slow; consider adding an index."
-        elif "SELECT *" in row["query"]:
-            return "Avoid SELECT *; specify required columns."
-        else:
-            return "Query performance is acceptable."
-
-    df["recommendations"] = df.apply(make_recommendation, axis=1)
-
-    # Save normalized data back (with execution_time column)
-    df.to_csv(csv_path, index=False)
-
-    return {
-        "status": "success",
-        "message": "Analysis complete. Recommendations added.",
-        "rows_analyzed": len(df),
-        "columns": list(df.columns)  # for debugging
-    }
-
-
-
-@app.get("/why/{query_id}")
-def why_is_query_slow(query_id: str, csv_path: str = Query(...)):
-    try:
-        df = pd.read_csv(csv_path)
-
-        # Normalize column names if needed
-        if "exec_time_ms" in df.columns:
-            time_col = "exec_time_ms"
-        elif "execution_time" in df.columns:
-            time_col = "execution_time"
-        else:
-            return JSONResponse(
-                status_code=400,
-                content={"reason": "CSV missing exec_time_ms or execution_time column"}
-            )
-
-        # Check if query_id exists
-        row = df[df["query_id"] == query_id]
-        if row.empty:
-            return {"reason": f"Query ID {query_id} not found in logs."}
-
-        exec_time = row.iloc[0][time_col]
-        rows_examined = row.iloc[0]["rows_examined"]
-        query_text = row.iloc[0]["query"]
-
-        # Basic heuristic explanation
-        if exec_time > 1000 or rows_examined > 5000:
-            reason = "Query is slow; consider adding an index."
-        else:
-            reason = "Query performance is acceptable."
-
-        return {
-            "query_id": query_id,
-            "query": query_text,
-            "exec_time": float(exec_time),
-            "rows_examined": int(rows_examined),
-            "reason": reason,
-        }
-
-    except Exception as e:
-        # Always return JSON error instead of crashing
-        return JSONResponse(
-            status_code=500,
-            content={"reason": f"Internal error: {str(e)}"}
-        )
-
 @app.get("/")
 def root():
-    return {"message": "Welcome to AI-Powered DB Profiler API"}
+    return {"message": "Welcome to DB Profiler API"}
 
-@app.get("/favicon.ico")
-def favicon():
-    return {}

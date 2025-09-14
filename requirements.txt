@@ -5,5 +5,8 @@ numpy
 scikit-learn
 psycopg2-binary
 sqlparse
+google-generativeai
 python-dotenv
+streamlit
+requests
 rich
