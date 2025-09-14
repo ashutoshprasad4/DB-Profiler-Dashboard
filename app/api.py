@@ -3,16 +3,17 @@ from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import pandas as pd
-from typing import List, Optional
+from typing import List, Optional,Dict,Any
 from dotenv import load_dotenv
 
-load_dotenv() # Loads variables from .env file
+# --- Load environment variables from .env file ---
+load_dotenv()
 
-# Import your project modules
+# --- Import your project modules ---
 from .features import extract_features
 from .analyzer import Analyzer
 from .generator import generate_csv
-from .ai_recommender import get_llm_recommendation_for_query
+from .ai_chatbot import get_chatbot_response
 
 app = FastAPI()
 analyzer = Analyzer()
@@ -21,11 +22,14 @@ analyzer = Analyzer()
 class AnalyzeRequest(BaseModel):
     csv_path: str
 
-class LLMRequest(BaseModel):
-    query: str
-    execution_time: float
-    rows_examined: int
-    reasons: List[str]
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    history: List[ChatMessage]
+    question: str
+    context_data: str
 
 # --- API Endpoints ---
 @app.post("/analyze")
@@ -60,26 +64,27 @@ def analyze(req: AnalyzeRequest):
         if df_with_features is None or not isinstance(df_with_features, pd.DataFrame):
             raise ValueError("Analysis resulted in an invalid DataFrame.")
 
-        # --- FIX: Convert Timestamp objects to JSON-compatible strings ---
-        # The .astype(str) method is the correct way to serialize a datetime column.
+        # Convert Timestamp objects to JSON-compatible strings
         df_with_features['timestamp'] = df_with_features['timestamp'].astype(str)
 
-        # Convert DataFrame to a list of dicts and let JSONResponse handle encoding
+        # Convert DataFrame to a list of dicts for a clean JSON response
         json_content = df_with_features.to_dict(orient='records')
         return JSONResponse(content=json_content)
 
     except Exception as e:
-        # If any part of the analysis fails, return a specific HTTP 500 error.
         raise HTTPException(status_code=500, detail=f"An error occurred during analysis: {e}")
 
-
-@app.post("/get-llm-recommendation")
-def get_llm_recommendation(req: LLMRequest):
+@app.post("/chat-with-assistant")
+def chat_with_assistant(req: ChatRequest):
     """
-    Takes data for a single query and gets a detailed recommendation from an LLM.
+    Handles a conversational turn with the AI chatbot assistant.
     """
-    recommendation = get_llm_recommendation_for_query(req.dict())
-    return recommendation
+    response_text = get_chatbot_response(
+        chat_history=[msg.dict() for msg in req.history],
+        question=req.question,
+        context_data=req.context_data
+    )
+    return {"role": "assistant", "content": response_text}
 
 @app.post("/generate-sample")
 def gen_sample():

@@ -3,10 +3,10 @@ uvicorn[standard]
 pandas
 numpy
 scikit-learn
-psycopg2-binary
 sqlparse
 google-generativeai
 python-dotenv
 streamlit
 requests
-rich
+psycopg2-binary
+mysql-connector-python

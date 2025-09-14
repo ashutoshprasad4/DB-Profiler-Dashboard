@@ -1,32 +1,65 @@
-# DB Profiler - Proof of concept
+# DB Profiler
 
 ## Setup
-1. Create and activate virtualenv
-   python -m venv .venv
-   source .venv/bin/activate
 
-2. Install deps
-   pip install -r requirements.txt
+1.  **Create and activate virtualenv**
+    ```bash
+    python -m venv .venv
+    .venv\Scripts\activate  # On Windows
+    # source .venv/bin/activate  # On macOS/Linux
+    ```
 
-3. Generate synthetic logs
-   python -m app.generator
+2.  **Install dependencies**
+    ```bash
+    pip install -r requirements.txt
+    ```
+    
+3.  **Configure API Key**
+    Create a `.env` file in the project root with your Google API Key.
+    ```
+    GOOGLE_API_KEY='YOUR_SECRET_API_KEY_HERE'
+    ```
 
-4. Run analyzer API
-   uvicorn app.api:app --reload --port 8000
+    * **How to Get an API Key**: A Google API Key is required for the AI assistant.
+        1.  Go to **[Google AI Studio](https://aistudio.google.com/app/apikey)**.
+        2.  Sign in and click **"Create API key"**.
+        3.  Copy the generated key and paste it into your `.env` file. Treat this key like a password.
 
-5. Analyze logs (POST /analyze)
-   curl -X POST "http://localhost:8000/analyze" -H "Content-Type: application/json" -d '{"csv_path":"examples/sample_logs.csv"}'
+    * **AI Model Used**: This project uses the `gemini-1.5-flash` model via the `google-generativeai` library.
 
-6. Query why a specific query is slow (conversational endpoint):
-   GET /why/Q1?csv_path=examples/sample_logs.csv
+4.  **Generate synthetic logs (Optional)**
+    ```bash
+    python app/generator.py
+    ```
+
+5.  **Run the API Server**
+    In your first terminal, run:
+    ```bash
+    uvicorn app.api:app --reload --port 8000
+    ```
+
+6.  **Run the Dashboard**
+    In a second terminal, run:
+    ```bash
+    streamlit run app/dashboard.py
+    ```
+
+## API Usage Examples (via cURL)
+
+* **Analyze logs (POST /analyze)**
+    ```bash
+    curl -X POST "http://localhost:8000/analyze" -H "Content-Type: application/json" -d "{\"csv_path\":\"examples/sample_logs.csv\"}"
+    ```
+* **Get AI recommendation (POST /get-llm-recommendation)**
+    ```bash
+    curl -X POST "http://localhost:8000/get-llm-recommendation" -H "Content-Type: application/json" -d "{\"query\":\"SELECT * FROM users WHERE id = 123\",\"execution_time\":500.0,\"rows_examined\":10000,\"reasons\":[\"Large rows examined\"]}"
+    ```
 
 ## Postgres simulation
-Set environment variables PG_HOST, PG_PORT, PG_DB, PG_USER, PG_PASS to point to a sandbox DB.
-Use app.simulator.simulate_add_index_and_explain(table, column, sql) to simulate index creation and collect EXPLAIN ANALYZE.
+Set environment variables `PG_HOST`, `PG_PORT`, `PG_DB`, `PG_USER`, `PG_PASS` to point to a sandbox DB. The simulator functionality is present in `app/simulator.py` but is not yet integrated into the main dashboard workflow.
 
 ## Next steps / improvements
-- Add parser & plan analyzer for Postgres EXPLAIN JSON
-- Implement learned cost model (train regressor on observed exec_time / plan features)
-- Add non-blocking simulator (run in ephemeral docker DB) for safe testing
-- Build dashboard (Grafana/React) that consumes API
-- Implement conversational interface with an LLM (pass the explainability data as context)
+-   Integrate the Postgres simulator into the dashboard to test AI recommendations.
+-   Add a caching layer to store and retrieve AI recommendations to reduce API calls.
+-   Implement a learned cost model (train regressor on observed exec_time / plan features).
+-   Add a non-blocking simulator (e.g., run in an ephemeral Docker DB) for safe testing.
